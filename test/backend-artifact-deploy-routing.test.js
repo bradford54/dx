@@ -4,6 +4,10 @@ jest.unstable_mockModule('../lib/backend-artifact-deploy.js', () => ({
   runBackendArtifactDeploy: jest.fn(),
 }))
 
+jest.unstable_mockModule('../lib/artifact-deploy.js', () => ({
+  runArtifactDeploy: jest.fn(),
+}))
+
 jest.unstable_mockModule('../lib/vercel-deploy.js', () => ({
   deployToVercel: jest.fn(),
 }))
@@ -25,6 +29,7 @@ const { FLAG_DEFINITIONS, parseFlags } = await import('../lib/cli/flags.js')
 const { showCommandHelp, showHelp } = await import('../lib/cli/help.js')
 const { handleDeploy } = await import('../lib/cli/commands/deploy.js')
 const { runBackendArtifactDeploy } = await import('../lib/backend-artifact-deploy.js')
+const { runArtifactDeploy } = await import('../lib/artifact-deploy.js')
 const { deployToVercel } = await import('../lib/vercel-deploy.js')
 
 describe('backend artifact deploy routing', () => {
@@ -68,6 +73,31 @@ describe('backend artifact deploy routing', () => {
       environment: 'development',
     })
     expect(deployToVercel).not.toHaveBeenCalled()
+  })
+
+  test('generic artifact target dispatches to the generic artifact runner', async () => {
+    const cli = {
+      invocation: 'dx',
+      commands: {
+        deploy: {
+          'comfyui-mulerouter': { internal: 'artifact-deploy' },
+        },
+      },
+      flags: {},
+      args: ['deploy', 'comfyui-mulerouter'],
+      ensureRepoRoot: jest.fn(),
+    }
+
+    await handleDeploy(cli, ['comfyui-mulerouter'])
+
+    expect(runArtifactDeploy).toHaveBeenCalledWith({
+      cli,
+      target: 'comfyui-mulerouter',
+      args: ['comfyui-mulerouter'],
+      environment: 'development',
+    })
+    expect(runBackendArtifactDeploy).not.toHaveBeenLastCalledWith(expect.objectContaining({ cli }))
+    expect(deployToVercel).not.toHaveBeenLastCalledWith('comfyui-mulerouter', expect.anything())
   })
 
   test('deploy backend defaults to development while Vercel targets keep staging default', async () => {

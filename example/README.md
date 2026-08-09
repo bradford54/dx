@@ -252,6 +252,49 @@ dx deploy backend --prod --skip-migration
 - 所有本地路径字段都会先约束在项目根目录内，不能通过 `../` 指到项目外。
 - `remote.baseDir` 必须使用绝对路径，并且只能包含 `/`、字母、数字、`.`、`_`、`-`。
 
+### 7. 非 Node 制品使用通用 artifact runner
+
+Python、Go 或其他由 systemd/自定义命令托管的服务使用 `internal: "artifact-deploy"`。它复用 `releases/`、`current`、`uploads/`、`keepReleases` 和失败回滚语义，但不会在远端检查 Node、pnpm 或 dotenv。
+
+最小结构：
+
+```json
+{
+  "deploy": {
+    "worker": {
+      "internal": "artifact-deploy",
+      "artifactDeploy": {
+        "build": {
+          "command": "python scripts/build_worker.py",
+          "sourceDir": "dist/worker",
+          "versionCommand": "python scripts/read_worker_version.py"
+        },
+        "artifact": {
+          "outputDir": "release/worker",
+          "bundleName": "worker-bundle"
+        },
+        "remote": {
+          "host": "worker-host",
+          "user": "deploy",
+          "baseDir": "/srv/worker"
+        },
+        "startup": {
+          "mode": "systemd",
+          "serviceName": "worker.service"
+        },
+        "deploy": {
+          "keepReleases": 5,
+          "installCommand": "python -m pip install -r requirements.txt"
+        },
+        "verify": {
+          "command": "sudo systemctl is-active --quiet worker.service"
+        }
+      }
+    }
+  }
+}
+```
+
 ## `env-layers.json` 怎么理解
 
 [env-layers.json](/Users/a1/work/dx/example/dx/config/env-layers.json) 只负责一件事：

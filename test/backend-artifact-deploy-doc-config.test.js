@@ -34,4 +34,17 @@ describe('backend artifact deploy docs and example config', () => {
     expect(exampleReadme).toContain('所有本地路径字段都会先约束在项目根目录内')
     expect(exampleReadme).toContain('`remote.baseDir` 必须使用绝对路径')
   })
+
+  test('README documents the non-Node artifact target contract', () => {
+    const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8')
+    const exampleReadme = readFileSync(new URL('../example/README.md', import.meta.url), 'utf8')
+
+    expect(readme).toContain('internal: "artifact-deploy"')
+    expect(readme).toContain('dx deploy comfyui-mulerouter --prod')
+    expect(readme).toContain('`startup.mode` 支持 `systemd` 和 `command`')
+    expect(readme).toContain('`deploy.installCommand` 可省略')
+    expect(readme).toContain('`verify.command` 会重试到成功')
+    expect(readme).toContain('`current` 切回上一 release')
+    expect(exampleReadme).toContain('非 Node 制品使用通用 artifact runner')
+  })
 })

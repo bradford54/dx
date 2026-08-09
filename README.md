@@ -234,6 +234,7 @@ dx 的命令由 `dx/config/commands.json` 驱动，并且内置了一些 interna
 - `internal: sdk-build`：SDK 生成/构建
 - `internal: backend-package`：后端打包
 - `internal: backend-artifact-deploy`：后端制品构建、上传与远端部署
+- `internal: artifact-deploy`：技术栈无关的制品构建、上传、原子切换与服务启动
 - `internal: start-dev`：开发环境一键启动
 - `internal: pm2-stack`：PM2 交互式服务栈（支持端口清理/缓存清理配置）
 
@@ -243,7 +244,7 @@ dx 的命令由 `dx/config/commands.json` 驱动，并且内置了一些 interna
 - `dx build [target]`：按当前环境构建；未指定 target 时默认 `all`
 - `dx test [unit|e2e] <target> [path...]`：运行测试；unit 自动使用 `--test` 环境，e2e 自动使用 `--e2e` 环境
 - `dx db <generate|migrate|deploy|reset|seed|format|script>`：数据库相关命令；`migrate` 仅允许 `--dev`
-- `dx deploy <target>`：部署目标；普通 Vercel target 默认 `--staging`，`backend-artifact-deploy` 默认 `--dev`
+- `dx deploy <target>`：部署目标；普通 Vercel target 默认 `--staging`，artifact target 默认 `--dev`
 - `dx lint [--fix]`：运行 lint；`--fix` 会透传给下游 runner
 - `dx install`：执行项目配置的安装命令
 - `dx clean [target]` / `dx cache clear`：执行清理类命令，危险操作会要求确认
@@ -420,6 +421,87 @@ dx deploy front-br --prod
 ```
 
 Project ID 的值仍由当前环境层或 CI Environment 注入；`commands.json` 只声明变量名，不保存凭据或具体 ID。
+
+### 通用制品发布（非 Node / systemd）
+
+当 target 配置为 `internal: "artifact-deploy"` 时，`dx deploy <target>` 使用技术栈无关的制品发布流程。远端不要求 Node、pnpm、dotenv、PM2；安装、启动和验活都由 target 自己声明。
+
+```json
+{
+  "deploy": {
+    "comfyui-mulerouter": {
+      "internal": "artifact-deploy",
+      "artifactDeploy": {
+        "build": {
+          "command": "python scripts/build_comfyui_mulerouter.py",
+          "sourceDir": "dist/comfyui-mulerouter",
+          "versionCommand": "python scripts/read_comfyui_mulerouter_version.py"
+        },
+        "artifact": {
+          "outputDir": "release/comfyui-mulerouter",
+          "bundleName": "comfyui-mulerouter-bundle",
+          "releaseName": "comfyui-mulerouter"
+        },
+        "remote": {
+          "production": {
+            "host": "gpu-prod",
+            "port": 22,
+            "user": "deploy",
+            "baseDir": "/srv/comfyui-mulerouter"
+          }
+        },
+        "deploy": {
+          "keepReleases": 5,
+          "installCommand": "python -m pip install -r requirements.txt"
+        },
+        "startup": {
+          "mode": "systemd",
+          "serviceName": "comfyui-mulerouter.service"
+        },
+        "verify": {
+          "command": "sudo systemctl is-active --quiet comfyui-mulerouter.service",
+          "healthCheck": {
+            "url": "http://127.0.0.1:8188/health",
+            "timeoutSeconds": 10,
+            "maxWaitSeconds": 30,
+            "retryIntervalSeconds": 2
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+常用命令：
+
+```bash
+dx deploy comfyui-mulerouter --prod
+dx deploy comfyui-mulerouter --build-only
+dx deploy comfyui-mulerouter --prod --artifact release/comfyui-mulerouter/comfyui-mulerouter-bundle-v1.2.3-20260809-120000.tgz
+```
+
+配置约定：
+
+- `build.sourceDir` 是构建完成后要打入 release 的目录。
+- 默认按纯技术栈命令执行构建；只有显式配置 `build.app` 时才加载 dx 的应用环境层。
+- 版本可来自 `artifact.version`、JSON 文件 `build.versionFile` 的 `version` 字段，或输出版本字符串的 `build.versionCommand`。
+- `deploy.installCommand` 可省略；配置后在新 release 目录内执行。
+- `startup.mode` 支持 `systemd` 和 `command`。`systemd` 默认执行 `sudo systemctl restart <serviceName>`；也可以用 `startup.command` 完全覆盖。
+- `startup.rollbackCommand` 可覆盖回滚后的重启命令；未配置时复用正常启动命令。
+- `verify.command` 会重试到成功或超过 `verify.maxWaitSeconds`（默认 24 秒）；`verify.retryIntervalSeconds` 默认 2 秒。`verify.healthCheck` 可选，用于额外执行 HTTP 探测。
+- 生命周期命令可读取 `DX_RELEASE_DIR`、`DX_CURRENT_LINK`、`DX_PREVIOUS_RELEASE`、`DX_ENVIRONMENT`、`DX_SERVICE_NAME`。
+- 通用 artifact target 不触发目标工程的 pnpm 依赖安装，也不套用 backend 环境变量校验。
+
+远端目录与发布语义：
+
+- `<baseDir>/releases/<release-name>-v<version>-<timestamp>`
+- `<baseDir>/current` 原子切换到本次 release
+- `<baseDir>/uploads/<bundle-file>`
+- 成功后只保留最新的 `keepReleases` 个 release
+- 启动或验活失败时，`current` 切回上一 release，并执行回滚启动命令
+
+打包阶段仍会拒绝任何 `.env*` 文件进入制品，并对内层归档生成 SHA-256 校验文件。已有制品可通过 `--artifact` 直接部署；该路径不要求目标工程存在 Node/pnpm 依赖。
 
 ### backend 制品发布
 

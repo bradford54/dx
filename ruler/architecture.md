@@ -34,6 +34,7 @@ lib/
   codex-initial.js          # dx initial：同步包内 skills 到本机 agent 目录
   worktree.js               # issue worktree 管理（注意：与原生 git worktree 不同）
   vercel-deploy.js          # Vercel 部署辅助
+  artifact-deploy/          # 技术栈无关的制品构建、上传、systemd/command 启动与回滚
   backend-artifact-deploy/   # 后端制品部署配置、构建、远端脚本与结果解析
   start-dev.js              # 内置开发启动 runner
   backend-package.js        # 后端打包 runner（给目标工程用）
@@ -67,7 +68,7 @@ ruler/                      # 常驻提示词（本文件所在目录）
   - 串行：`{ "sequential": true, "commands": ["build.backend.production", ...] }`
   - 按环境分支：`development/staging/production/test/e2e`（由 `--dev/--staging/--prod/--test/--e2e` 选择；默认 `--dev`）
   - 元数据：`app`（触发 dotenv 分层与 env-policy required 校验）、`ports`（端口冲突清理）、`dangerous`（危险操作确认）
-  - internal runner：`sdk-build`、`backend-package`、`backend-artifact-deploy`、`start-dev`、`pm2-stack`
+  - internal runner：`sdk-build`、`backend-package`、`artifact-deploy`、`backend-artifact-deploy`、`start-dev`、`pm2-stack`
 
 3) 环境变量分层与校验
 - `dx/config/env-layers.json` 定义每个环境加载哪些 `.env.<env>(.local)` 文件。
